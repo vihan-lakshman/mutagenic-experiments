@@ -17,7 +17,7 @@ login()
 model: ESM3InferenceClient = ESM3.from_pretrained("esm3_sm_open_v1").to("cuda") # or "cpu"
 
 # Read the TSV file into a DataFrame
-df = pd.read_csv('InterProDescriptions.tsv', sep='\t')
+df = pd.read_csv('data/InterProDescriptions.tsv', sep='\t')
 
 # Create an empty dictionary to store the InterPro IDs for each GO term
 go_term_to_interpro_ids = {
