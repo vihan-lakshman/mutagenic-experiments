@@ -12,8 +12,6 @@ import pandas as pd
 from esm.tokenization import InterProQuantizedTokenizer
 from esm.utils.types import FunctionAnnotation
 
-login()
-
 model: ESM3InferenceClient = ESM3.from_pretrained("esm3_sm_open_v1").to("cuda") # or "cpu"
 
 # Read the TSV file into a DataFrame
@@ -34,9 +32,6 @@ for index, row in df.iterrows():
     if go_term in go_term_to_interpro_ids:
       go_term_to_interpro_ids[go_term].append(row['Accession'])
 
-# Print the lists of InterPro IDs for each GO term
-for go_term, interpro_ids in go_term_to_interpro_ids.items():
-  print(f"Number of InterPro IDs for {go_term}: {len(interpro_ids)}")
 
 GO_term_name_dict = {
     'GO:0009055': 'electron transfer activity',

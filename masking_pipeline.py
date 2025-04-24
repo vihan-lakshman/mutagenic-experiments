@@ -41,8 +41,6 @@ from huggingface_hub import login
 from esm.models.esm3 import ESM3
 from esm.sdk.api import ESM3InferenceClient, ESMProtein, GenerationConfig
 
-login()
-
 model: ESM3InferenceClient = ESM3.from_pretrained("esm3_sm_open_v1").to('cuda')
 
 import torch.nn as nn
