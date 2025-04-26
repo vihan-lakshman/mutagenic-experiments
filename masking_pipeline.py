@@ -1,4 +1,5 @@
 import pandas as pd
+
 df = pd.read_csv('data/with_seq_similarity_and_mutant_seq_input_df_sumSquare.csv')
 df2 = pd.read_csv('data/with_seq_similarity_embedding_output_full_sumSquare.csv')
 df3 = pd.read_csv('data/with_seq_similarity_random_output_full_sumSquare.csv')
