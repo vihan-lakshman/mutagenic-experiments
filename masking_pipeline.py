@@ -1,52 +1,19 @@
+import math
+
+import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
-
-df = pd.read_csv('data/with_seq_similarity_and_mutant_seq_input_df_sumSquare.csv')
-df2 = pd.read_csv('data/with_seq_similarity_embedding_output_full_sumSquare.csv')
-df3 = pd.read_csv('data/with_seq_similarity_random_output_full_sumSquare.csv')
-print(df.columns)
-print(df2.columns)
-print(df3.columns)
-print(df2['Masked Sequences'].head())
-df2_full_exists = True
-df3_full_exists = True
-
 import torch
+import torch.nn as nn
 from sklearn.metrics.pairwise import cosine_similarity
 
 import blosum as bl
-matrix = bl.BLOSUM(80)
-
-# Dictionary to hold the results
-embeddings_dict = {}
-
-# Iterate through each row in the DataFrame
-for _, row in df.iterrows():
-    entry = row['Entry']
-    interpro = row['InterPro']
-
-    # Skip rows where 'Interpro' is None
-    if pd.isna(interpro) or not interpro.strip():
-        continue
-
-    # Split the InterPro IDs by semicolons
-    interpro_ids = interpro.split(';')
-    interpro_ids = interpro_ids[:-1]
-
-    # Initialize entry in the dictionary if not present
-    if entry not in embeddings_dict:
-        embeddings_dict[entry] = {
-            'InterPro_ids': interpro_ids
-        }
-
-from huggingface_hub import login
 from esm.models.esm3 import ESM3
 from esm.sdk.api import ESM3InferenceClient, ESMProtein, GenerationConfig
-
-model: ESM3InferenceClient = ESM3.from_pretrained("esm3_sm_open_v1").to('cuda')
-
-import torch.nn as nn
 from esm.tokenization import InterProQuantizedTokenizer
 from esm.utils.types import FunctionAnnotation
+from huggingface_hub import login
+
 def get_keywords_from_interpro(
     interpro_annotations,
     interpro2keywords=InterProQuantizedTokenizer().interpro2keywords,
@@ -63,6 +30,7 @@ def get_keywords_from_interpro(
             for keyword in keywords
         ])
     return keyword_annotations_list
+
 
 def get_label_embedding(interpro_label,sequence):
   hostProtein = ESMProtein(sequence=sequence)
@@ -89,13 +57,7 @@ def get_label_embedding(interpro_label,sequence):
   else:
       return None
 
-import numpy as np
-embeddings_dict = np.load('data/embeddings_dict.npy',allow_pickle=True)
-embeddings_dict = dict(embeddings_dict.item())
 
-import numpy as np
-import torch
-from sklearn.metrics.pairwise import cosine_similarity
 
 def calculatesquareddist(proteinembed, embedding_np):
     # Ensure inputs are numpy arrays for compatibility with cosine_similarity
@@ -114,6 +76,7 @@ def calculatesquareddist(proteinembed, embedding_np):
 
     # Convert results to a tensor for consistency if needed
     return squared_similarities
+
 
 def embedding_masking_model(
     prompt,
@@ -192,10 +155,6 @@ def embedding_masking_model(
 
     return indices.tolist(), protein_np
 
-import math
-row = df.iloc[6]
-maskedindeces,embedding = embedding_masking_model(row['substituted_seq'], model, df, embeddings_dict,percentage=math.ceil(row['percent_deleted']))
-print(embedding.shape)
 
 def get_random_indices(prompt, percentage):
     """
@@ -208,307 +167,316 @@ def get_random_indices(prompt, percentage):
     # Randomly select unique indices to mask
     return random.sample(range(len(prompt)), num_indices)
 
-import math
-allnuminterpro = []
-allpercentmasks = df['percent_deleted'].tolist()
-allpercentidentities = []
-allindexes = []
-allmasked = []
-sequence_similarity = []
-masked_sequence = []
-generated_sequence_list = []
-protein_embedding_list = []
-for index, row in df.iterrows():
-  if row["Entry"] not in embeddings_dict:
-    continue
-  if not df2_full_exists:
-    maskedindeces, protein_embedding = embedding_masking_model(row['substituted_seq'], model, df, embeddings_dict,percentage=math.ceil(row['percent_deleted']))
-    if not maskedindeces:
-      continue
-    protein_embedding_list.append(protein_embedding)
-    allindexes.append(index)
-    numinterpro = int(len(row['InterPro'])/10)
-    allnuminterpro.append(numinterpro)
-    correctmasks = set(np.arange(row['del_start'],row['del_end']+1))
-    truncatedpredictions = set(maskedindeces[:len(correctmasks)])
-    allmasked.append(truncatedpredictions)
-    identical_count = len(truncatedpredictions.intersection(correctmasks))
-    percent_identity = (identical_count / len(correctmasks))
-    allpercentidentities.append(percent_identity)
-    modified_prompt = list(row['substituted_seq'])
-    for index in maskedindeces:
-        modified_prompt[index] = "_"
-    modified_prompt = "".join(modified_prompt)
-    masked_sequence.append(modified_prompt)
-  else:
-    if index not in df2['Index'].tolist():
-      continue
+def plot_results(df2, df3):
+    # Fit regression lines
+    slope2, intercept2 = np.polyfit(df2['Percentage Deleted'], df2['Percent Correct'], 1)
+    slope3, intercept3 = np.polyfit(df3['Percentage Deleted'], df3['Percent Correct'], 1)
+
+    # Generate x values for regression lines
+    x_vals2 = np.linspace(df2['Percentage Deleted'].min(), df2['Percentage Deleted'].max(), 100)
+    y_vals2 = slope2 * x_vals2 + intercept2
+
+    x_vals3 = np.linspace(df3['Percentage Deleted'].min(), df3['Percentage Deleted'].max(), 100)
+    y_vals3 = slope3 * x_vals3 + intercept3
+
+    # Plot scatter and regression lines
+    plt.figure(figsize=(10, 6))
+    plt.scatter(df2['Percentage Deleted'], df2['Percent Correct'], label='Embedding Masking Model', marker='o')
+    plt.scatter(df3['Percentage Deleted'], df3['Percent Correct'], label='Random Masking Model', marker='x')
+
+    plt.plot(x_vals2, y_vals2, color='blue', linestyle='--', label='Fit: Embedding Masking')
+    plt.plot(x_vals3, y_vals3, color='orange', linestyle='--', label='Fit: Random Masking')
+
+    plt.xlabel('Percentage Deleted')
+    plt.ylabel('Percent Correct')
+    plt.title('Percent Correct vs. Percentage Deleted')
+    plt.legend()
+    plt.grid(True)
+    plt.savefig("correct_v_deleted.png")
+
+    # Assuming df2 and df3 are pandas DataFrames with columns 'Percentage Deleted' and 'Sequence Similarity'
+    df2 = df2.dropna(subset=['Percentage Deleted', 'Sequence Similarity'])
+    df3 = df3.dropna(subset=['Percentage Deleted', 'Sequence Similarity'])
+
+    # Drop rows with -infinity values
+    df2 = df2[(df2['Percentage Deleted'] != -np.inf) & (df2['Sequence Similarity'] != -np.inf)]
+    df3 = df3[(df3['Percentage Deleted'] != -np.inf) & (df3['Sequence Similarity'] != -np.inf)]
+
+    # Fit regression lines for Sequence Similarity
+    slope2, intercept2 = np.polyfit(df2['Percentage Deleted'], df2['Sequence Similarity'], 1)
+    slope3, intercept3 = np.polyfit(df3['Percentage Deleted'], df3['Sequence Similarity'], 1)
+
+    # Generate x values for regression lines
+    x_vals2 = np.linspace(df2['Percentage Deleted'].min(), df2['Percentage Deleted'].max(), 100)
+    y_vals2 = slope2 * x_vals2 + intercept2
+
+    x_vals3 = np.linspace(df3['Percentage Deleted'].min(), df3['Percentage Deleted'].max(), 100)
+    y_vals3 = slope3 * x_vals3 + intercept3
+
+    # Plot scatter and regression lines
+    plt.figure(figsize=(10, 6))
+    plt.scatter(df2['Percentage Deleted'], df2['Sequence Similarity'], label='Embedding Masking Model', marker='o')
+    plt.scatter(df3['Percentage Deleted'], df3['Sequence Similarity'], label='Random Masking Model', marker='x')
+
+    plt.plot(x_vals2, y_vals2, color='blue', linestyle='--', label='Fit: Embedding Masking')
+    plt.plot(x_vals3, y_vals3, color='orange', linestyle='--', label='Fit: Random Masking')
+
+    plt.xlabel('Percentage Deleted')
+    plt.ylabel('Sequence Similarity')
+    plt.title('Sequence Similarity vs. Percentage Deleted (Sum of Squares Distance)')
+    plt.legend()
+    plt.grid(True)
+    plt.savefig("similarity_v_deleted.png")
+
+
+    # Assuming df2 and df3 are pandas DataFrames with necessary columns
+    df2 = df2.dropna(subset=['Percentage Deleted', 'Sequence Similarity', 'Number of Interpro Terms'])
+    df3 = df3.dropna(subset=['Percentage Deleted', 'Sequence Similarity', 'Number of Interpro Terms'])
+
+    # Drop rows with -infinity values
+    df2 = df2[(df2['Percentage Deleted'] != -np.inf) & (df2['Sequence Similarity'] != -np.inf)]
+    df3 = df3[(df3['Percentage Deleted'] != -np.inf) & (df3['Sequence Similarity'] != -np.inf)]
+
+    # Define color mapping function
+    def map_color(value):
+        if value < 2:
+            return 'red'
+        elif 2 <= value <= 4:
+            return 'yellow'
+        elif 4 < value <= 6:
+            return 'green'
+        else:
+            return 'blue'
+
+    # Map colors for df2 and df3
+    colors2 = df2['Number of Interpro Terms'].apply(map_color)
+    colors3 = df3['Number of Interpro Terms'].apply(map_color)
+
+    # Fit regression lines for Sequence Similarity
+    slope2, intercept2 = np.polyfit(df2['Percentage Deleted'], df2['Sequence Similarity'], 1)
+    slope3, intercept3 = np.polyfit(df3['Percentage Deleted'], df3['Sequence Similarity'], 1)
+
+    # Generate x values for regression lines
+    x_vals2 = np.linspace(df2['Percentage Deleted'].min(), df2['Percentage Deleted'].max(), 100)
+    y_vals2 = slope2 * x_vals2 + intercept2
+
+    x_vals3 = np.linspace(df3['Percentage Deleted'].min(), df3['Percentage Deleted'].max(), 100)
+    y_vals3 = slope3 * x_vals3 + intercept3
+
+    # Plot scatter and regression lines
+    plt.figure(figsize=(10, 6))
+    #plt.scatter(df2['Percentage Deleted'], df2['Sequence Similarity'], c=colors2, label='Embedding Masking Model', marker='o', edgecolor='black')
+    plt.scatter(df3['Percentage Deleted'], df3['Sequence Similarity'], label='Random Masking Model', marker='x', edgecolor='black')
+    plt.scatter(df2['Percentage Deleted'], df2['Sequence Similarity'], c=colors2, label='Embedding Masking Model', marker='o', edgecolor='black')
+
+    plt.plot(x_vals2, y_vals2, color='blue', linestyle='--', label='Fit: Embedding Masking')
+    plt.plot(x_vals3, y_vals3, color='orange', linestyle='--', label='Fit: Random Masking')
+
+    plt.xlabel('Percentage Deleted')
+    plt.ylabel('Sequence Similarity')
+    plt.title('Sequence Similarity vs. Percentage Deleted (Sum of Squares Distance)')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+def main():
+    df = pd.read_csv('data/with_seq_similarity_and_mutant_seq_input_df_sumSquare.csv')
+    df2 = pd.read_csv('data/with_seq_similarity_embedding_output_full_sumSquare.csv')
+    df3 = pd.read_csv('data/with_seq_similarity_random_output_full_sumSquare.csv')
+    df2_full_exists = True
+    df3_full_exists = True
+    matrix = bl.BLOSUM(80)
+
+    model = ESM3.from_pretrained("esm3_sm_open_v1").to('cuda')
+    embeddings_dict = np.load('data/embeddings_dict.npy',allow_pickle=True)
+    embeddings_dict = dict(embeddings_dict.item())
+    
+    row = df.iloc[6]
+    maskedindeces,embedding = embedding_masking_model(row['substituted_seq'], model, df, embeddings_dict,percentage=math.ceil(row['percent_deleted']))
+
+
+    allnuminterpro = []
+    allpercentmasks = df['percent_deleted'].tolist()
+    allpercentidentities = []
+    allindexes = []
+    allmasked = []
+    sequence_similarity = []
+    masked_sequence = []
+    generated_sequence_list = []
+    protein_embedding_list = []
+    for index, row in df.iterrows():
+      if row["Entry"] not in embeddings_dict:
+        continue
+      if not df2_full_exists:
+        maskedindeces, protein_embedding = embedding_masking_model(row['substituted_seq'], model, df, embeddings_dict,percentage=math.ceil(row['percent_deleted']))
+        if not maskedindeces:
+          continue
+        protein_embedding_list.append(protein_embedding)
+        allindexes.append(index)
+        numinterpro = int(len(row['InterPro'])/10)
+        allnuminterpro.append(numinterpro)
+        correctmasks = set(np.arange(row['del_start'],row['del_end']+1))
+        truncatedpredictions = set(maskedindeces[:len(correctmasks)])
+        allmasked.append(truncatedpredictions)
+        identical_count = len(truncatedpredictions.intersection(correctmasks))
+        percent_identity = (identical_count / len(correctmasks))
+        allpercentidentities.append(percent_identity)
+        modified_prompt = list(row['substituted_seq'])
+        for index in maskedindeces:
+            modified_prompt[index] = "_"
+        modified_prompt = "".join(modified_prompt)
+        masked_sequence.append(modified_prompt)
+      else:
+        if index not in df2['Index'].tolist():
+          continue
+        else:
+          modified_prompt = df2[df2['Index']==index]['Masked Sequences'].tolist()[0]
+      protein_prompt = ESMProtein(sequence=modified_prompt)
+
+      #make the function annotations
+      interpro_ids = embeddings_dict[df.iloc[index]['Entry']]
+      functionlist = []
+      for interpro_id in interpro_ids['InterPro_ids']:
+        functionlist.append(FunctionAnnotation(label=interpro_id, start=1, end=len(modified_prompt)))
+
+
+      #generate w/function annotations
+      protein_prompt.function_annotations = get_keywords_from_interpro(functionlist)
+      torch.cuda.empty_cache()
+      sequence_generation = model.generate(
+              protein_prompt,
+              GenerationConfig(
+              track="sequence",
+              num_steps=protein_prompt.sequence.count("_") // 2,
+              temperature=0.5,
+          ),
+      )
+
+      generated_sequence = sequence_generation.sequence
+      generated_sequence_list.append(generated_sequence)
+      # Ensure sequences are of equal length
+      if len(generated_sequence) != len(row['sequence']):
+          print("Sequences must be of the same length to calculate Hamming distance.")
+          sequence_similarity.append(None)
+      else:
+          blosum_score = 0
+          for gen_residue, target_residue in zip(generated_sequence, row['sequence']):
+              blosum_val =  matrix[gen_residue][target_residue]
+              blosum_score += blosum_val
+          blosum_score = blosum_score / len(generated_sequence)
+          sequence_similarity.append(blosum_score)
+      torch.cuda.empty_cache()
+
+    if not df2_full_exists:
+      shortenedpercentmasks = [allpercentmasks[i] for i in allindexes]
+      df2 = pd.DataFrame({
+          'Number of Interpro Terms': allnuminterpro,
+          'Percentage Deleted': shortenedpercentmasks,
+          'Percent Correct': allpercentidentities,
+          'Index': allindexes,
+          'Masked sites': allmasked,
+          'Sequence Similarity': sequence_similarity,
+          'Generated Sequences': generated_sequence_list,
+          'Masked Sequences': masked_sequence
+      })
     else:
-      modified_prompt = df2[df2['Index']==index]['Masked Sequences'].tolist()[0]
-  protein_prompt = ESMProtein(sequence=modified_prompt)
+      df2['Generated Sequences'] = generated_sequence_list
+      df2['Sequence Similarity'] = sequence_similarity
 
-  #make the function annotations
-  interpro_ids = embeddings_dict[df.iloc[index]['Entry']]
-  functionlist = []
-  for interpro_id in interpro_ids['InterPro_ids']:
-    functionlist.append(FunctionAnnotation(label=interpro_id, start=1, end=len(modified_prompt)))
+    # Save the DataFrame as a CSV file
+    df2.to_csv('with_seq_similarity_embedding_output_full.csv')
+
+    allnuminterpro = []
+    allpercentmasks = df['percent_deleted'].tolist()
+    allpercentidentities = []
+    allindexes = []
+    allmasked = []
+    sequence_similarity = []
+    masked_sequence = []
+    generated_sequence_list = []
+    selected_proteins = df[df.index.isin(df2['Index'])]
+    for index,row in selected_proteins.iterrows():
+      if row["Entry"] not in embeddings_dict:
+        continue
+      if not df3_full_exists:
+        maskedindeces = get_random_indices(row['substituted_seq'], percentage=math.ceil(row['percent_deleted']))
+        if not maskedindeces:
+          continue
+        allindexes.append(index)
+        numinterpro = int(len(row['InterPro'])/10)
+        allnuminterpro.append(numinterpro)
+        correctmasks = set(np.arange(row['del_start'],row['del_end']+1))
+        truncatedpredictions = set(maskedindeces[:len(correctmasks)])
+        allmasked.append(truncatedpredictions)
+        identical_count = len(truncatedpredictions.intersection(correctmasks))
+        percent_identity = (identical_count / len(correctmasks))
+        allpercentidentities.append(percent_identity)
+        modified_prompt = list(row['substituted_seq'])
+        for index in maskedindeces:
+            modified_prompt[index] = "_"
+        modified_prompt = "".join(modified_prompt)
+        masked_sequence.append(modified_prompt)
+      else:
+        if index not in df3['Index'].tolist():
+          continue
+        else:
+          modified_prompt = df3[df3['Index']==index]['Masked Sequences'].tolist()[0]
+      protein_prompt = ESMProtein(sequence=modified_prompt)
+      #make the function annotations
+      interpro_ids = embeddings_dict[df.iloc[index]['Entry']]
+      functionlist = []
+      for interpro_id in interpro_ids['InterPro_ids']:
+        functionlist.append(FunctionAnnotation(label=interpro_id, start=1, end=len(modified_prompt)))
 
 
-  #generate w/function annotations
-  protein_prompt.function_annotations = get_keywords_from_interpro(functionlist)
-  torch.cuda.empty_cache()
-  sequence_generation = model.generate(
+      #generate w/function annotations
+      protein_prompt.function_annotations = get_keywords_from_interpro(functionlist)
+      sequence_generation = model.generate(
           protein_prompt,
           GenerationConfig(
-          track="sequence",
-          num_steps=protein_prompt.sequence.count("_") // 2,
-          temperature=0.5,
-      ),
-  )
+              track="sequence",
+              num_steps=protein_prompt.sequence.count("_") // 2,
+              temperature=0.5,
+          ),
+      )
+      generated_sequence = sequence_generation.sequence
+      generated_sequence_list.append(generated_sequence)
+      # Ensure sequences are of equal length
+      if len(generated_sequence) != len(row['sequence']):
+          print("Sequences must be of the same length to calculate Hamming distance.")
+          sequence_similarity.append(None)
+      else:
+          blosum_score = 0
+          for gen_residue, target_residue in zip(generated_sequence, row['sequence']):
+              blosum_val =  matrix[gen_residue][target_residue]
+              blosum_score += blosum_val
+          blosum_score = blosum_score / len(generated_sequence)
+          sequence_similarity.append(blosum_score)
 
-  generated_sequence = sequence_generation.sequence
-  generated_sequence_list.append(generated_sequence)
-  # Ensure sequences are of equal length
-  if len(generated_sequence) != len(row['sequence']):
-      print("Sequences must be of the same length to calculate Hamming distance.")
-      sequence_similarity.append(None)
-  else:
-      blosum_score = 0
-      for gen_residue, target_residue in zip(generated_sequence, row['sequence']):
-          blosum_val =  matrix[gen_residue][target_residue]
-          blosum_score += blosum_val
-      blosum_score = blosum_score / len(generated_sequence)
-      sequence_similarity.append(blosum_score)
-  torch.cuda.empty_cache()
+      torch.cuda.empty_cache()
 
-if not df2_full_exists:
-  shortenedpercentmasks = [allpercentmasks[i] for i in allindexes]
-  df2 = pd.DataFrame({
-      'Number of Interpro Terms': allnuminterpro,
-      'Percentage Deleted': shortenedpercentmasks,
-      'Percent Correct': allpercentidentities,
-      'Index': allindexes,
-      'Masked sites': allmasked,
-      'Sequence Similarity': sequence_similarity,
-      'Generated Sequences': generated_sequence_list,
-      'Masked Sequences': masked_sequence
-  })
-else:
-  df2['Generated Sequences'] = generated_sequence_list
-  df2['Sequence Similarity'] = sequence_similarity
-
-# Save the DataFrame as a CSV file
-df2.to_csv('with_seq_similarity_embedding_output_full.csv')
-
-allnuminterpro = []
-allpercentmasks = df['percent_deleted'].tolist()
-allpercentidentities = []
-allindexes = []
-allmasked = []
-sequence_similarity = []
-masked_sequence = []
-generated_sequence_list = []
-selected_proteins = df[df.index.isin(df2['Index'])]
-for index,row in selected_proteins.iterrows():
-  if row["Entry"] not in embeddings_dict:
-    continue
-  if not df3_full_exists:
-    maskedindeces = get_random_indices(row['substituted_seq'], percentage=math.ceil(row['percent_deleted']))
-    if not maskedindeces:
-      continue
-    allindexes.append(index)
-    numinterpro = int(len(row['InterPro'])/10)
-    allnuminterpro.append(numinterpro)
-    correctmasks = set(np.arange(row['del_start'],row['del_end']+1))
-    truncatedpredictions = set(maskedindeces[:len(correctmasks)])
-    allmasked.append(truncatedpredictions)
-    identical_count = len(truncatedpredictions.intersection(correctmasks))
-    percent_identity = (identical_count / len(correctmasks))
-    allpercentidentities.append(percent_identity)
-    modified_prompt = list(row['substituted_seq'])
-    for index in maskedindeces:
-        modified_prompt[index] = "_"
-    modified_prompt = "".join(modified_prompt)
-    masked_sequence.append(modified_prompt)
-  else:
-    if index not in df3['Index'].tolist():
-      continue
+    if not df3_full_exists:
+      shortenedpercentmasks = [allpercentmasks[i] for i in allindexes]
+      df3 = pd.DataFrame({
+          'Number of Interpro Terms': allnuminterpro,
+          'Percentage Deleted': shortenedpercentmasks,
+          'Percent Correct': allpercentidentities,
+          'Index': allindexes,
+          'Masked sites': allmasked,
+          'Sequence Similarity': sequence_similarity,
+          'Generated Sequences': generated_sequence_list,
+          'Masked Sequences': masked_sequence
+      })
     else:
-      modified_prompt = df3[df3['Index']==index]['Masked Sequences'].tolist()[0]
-  protein_prompt = ESMProtein(sequence=modified_prompt)
-  #make the function annotations
-  interpro_ids = embeddings_dict[df.iloc[index]['Entry']]
-  functionlist = []
-  for interpro_id in interpro_ids['InterPro_ids']:
-    functionlist.append(FunctionAnnotation(label=interpro_id, start=1, end=len(modified_prompt)))
+      df3['Generated Sequences'] = generated_sequence_list
+      df3['Sequence Similarity'] = sequence_similarity
 
 
-  #generate w/function annotations
-  protein_prompt.function_annotations = get_keywords_from_interpro(functionlist)
-  sequence_generation = model.generate(
-      protein_prompt,
-      GenerationConfig(
-          track="sequence",
-          num_steps=protein_prompt.sequence.count("_") // 2,
-          temperature=0.5,
-      ),
-  )
-  generated_sequence = sequence_generation.sequence
-  generated_sequence_list.append(generated_sequence)
-  # Ensure sequences are of equal length
-  if len(generated_sequence) != len(row['sequence']):
-      print("Sequences must be of the same length to calculate Hamming distance.")
-      sequence_similarity.append(None)
-  else:
-      blosum_score = 0
-      for gen_residue, target_residue in zip(generated_sequence, row['sequence']):
-          blosum_val =  matrix[gen_residue][target_residue]
-          blosum_score += blosum_val
-      blosum_score = blosum_score / len(generated_sequence)
-      sequence_similarity.append(blosum_score)
+    df3.to_csv('with_seq_similarity_random_output_full.csv')
 
-  torch.cuda.empty_cache()
-
-if not df3_full_exists:
-  shortenedpercentmasks = [allpercentmasks[i] for i in allindexes]
-  df3 = pd.DataFrame({
-      'Number of Interpro Terms': allnuminterpro,
-      'Percentage Deleted': shortenedpercentmasks,
-      'Percent Correct': allpercentidentities,
-      'Index': allindexes,
-      'Masked sites': allmasked,
-      'Sequence Similarity': sequence_similarity,
-      'Generated Sequences': generated_sequence_list,
-      'Masked Sequences': masked_sequence
-  })
-else:
-  df3['Generated Sequences'] = generated_sequence_list
-  df3['Sequence Similarity'] = sequence_similarity
+    plot_results(df2, df3)
 
 
-df3.to_csv('with_seq_similarity_random_output_full.csv')
 
-# prompt: graph 'Percent Correct' column for df2 and df3 over the rows
-
-import numpy as np
-import matplotlib.pyplot as plt
-
-# Assuming df2 and df3 are pandas DataFrames with columns 'Percentage Deleted' and 'Percent Correct'
-
-# Fit regression lines
-slope2, intercept2 = np.polyfit(df2['Percentage Deleted'], df2['Percent Correct'], 1)
-slope3, intercept3 = np.polyfit(df3['Percentage Deleted'], df3['Percent Correct'], 1)
-
-# Generate x values for regression lines
-x_vals2 = np.linspace(df2['Percentage Deleted'].min(), df2['Percentage Deleted'].max(), 100)
-y_vals2 = slope2 * x_vals2 + intercept2
-
-x_vals3 = np.linspace(df3['Percentage Deleted'].min(), df3['Percentage Deleted'].max(), 100)
-y_vals3 = slope3 * x_vals3 + intercept3
-
-# Plot scatter and regression lines
-plt.figure(figsize=(10, 6))
-plt.scatter(df2['Percentage Deleted'], df2['Percent Correct'], label='Embedding Masking Model', marker='o')
-plt.scatter(df3['Percentage Deleted'], df3['Percent Correct'], label='Random Masking Model', marker='x')
-
-plt.plot(x_vals2, y_vals2, color='blue', linestyle='--', label='Fit: Embedding Masking')
-plt.plot(x_vals3, y_vals3, color='orange', linestyle='--', label='Fit: Random Masking')
-
-plt.xlabel('Percentage Deleted')
-plt.ylabel('Percent Correct')
-plt.title('Percent Correct vs. Percentage Deleted')
-plt.legend()
-plt.grid(True)
-plt.show()
-
-import numpy as np
-import matplotlib.pyplot as plt
-
-# Assuming df2 and df3 are pandas DataFrames with columns 'Percentage Deleted' and 'Sequence Similarity'
-df2 = df2.dropna(subset=['Percentage Deleted', 'Sequence Similarity'])
-df3 = df3.dropna(subset=['Percentage Deleted', 'Sequence Similarity'])
-
-# Drop rows with -infinity values
-df2 = df2[(df2['Percentage Deleted'] != -np.inf) & (df2['Sequence Similarity'] != -np.inf)]
-df3 = df3[(df3['Percentage Deleted'] != -np.inf) & (df3['Sequence Similarity'] != -np.inf)]
-
-# Fit regression lines for Sequence Similarity
-slope2, intercept2 = np.polyfit(df2['Percentage Deleted'], df2['Sequence Similarity'], 1)
-slope3, intercept3 = np.polyfit(df3['Percentage Deleted'], df3['Sequence Similarity'], 1)
-
-# Generate x values for regression lines
-x_vals2 = np.linspace(df2['Percentage Deleted'].min(), df2['Percentage Deleted'].max(), 100)
-y_vals2 = slope2 * x_vals2 + intercept2
-
-x_vals3 = np.linspace(df3['Percentage Deleted'].min(), df3['Percentage Deleted'].max(), 100)
-y_vals3 = slope3 * x_vals3 + intercept3
-
-# Plot scatter and regression lines
-plt.figure(figsize=(10, 6))
-plt.scatter(df2['Percentage Deleted'], df2['Sequence Similarity'], label='Embedding Masking Model', marker='o')
-plt.scatter(df3['Percentage Deleted'], df3['Sequence Similarity'], label='Random Masking Model', marker='x')
-
-plt.plot(x_vals2, y_vals2, color='blue', linestyle='--', label='Fit: Embedding Masking')
-plt.plot(x_vals3, y_vals3, color='orange', linestyle='--', label='Fit: Random Masking')
-
-plt.xlabel('Percentage Deleted')
-plt.ylabel('Sequence Similarity')
-plt.title('Sequence Similarity vs. Percentage Deleted (Sum of Squares Distance)')
-plt.legend()
-plt.grid(True)
-plt.show()
-
-
-import numpy as np
-import matplotlib.pyplot as plt
-
-# Assuming df2 and df3 are pandas DataFrames with necessary columns
-df2 = df2.dropna(subset=['Percentage Deleted', 'Sequence Similarity', 'Number of Interpro Terms'])
-df3 = df3.dropna(subset=['Percentage Deleted', 'Sequence Similarity', 'Number of Interpro Terms'])
-
-# Drop rows with -infinity values
-df2 = df2[(df2['Percentage Deleted'] != -np.inf) & (df2['Sequence Similarity'] != -np.inf)]
-df3 = df3[(df3['Percentage Deleted'] != -np.inf) & (df3['Sequence Similarity'] != -np.inf)]
-
-# Define color mapping function
-def map_color(value):
-    if value < 2:
-        return 'red'
-    elif 2 <= value <= 4:
-        return 'yellow'
-    elif 4 < value <= 6:
-        return 'green'
-    else:
-        return 'blue'
-
-# Map colors for df2 and df3
-colors2 = df2['Number of Interpro Terms'].apply(map_color)
-colors3 = df3['Number of Interpro Terms'].apply(map_color)
-
-# Fit regression lines for Sequence Similarity
-slope2, intercept2 = np.polyfit(df2['Percentage Deleted'], df2['Sequence Similarity'], 1)
-slope3, intercept3 = np.polyfit(df3['Percentage Deleted'], df3['Sequence Similarity'], 1)
-
-# Generate x values for regression lines
-x_vals2 = np.linspace(df2['Percentage Deleted'].min(), df2['Percentage Deleted'].max(), 100)
-y_vals2 = slope2 * x_vals2 + intercept2
-
-x_vals3 = np.linspace(df3['Percentage Deleted'].min(), df3['Percentage Deleted'].max(), 100)
-y_vals3 = slope3 * x_vals3 + intercept3
-
-# Plot scatter and regression lines
-plt.figure(figsize=(10, 6))
-#plt.scatter(df2['Percentage Deleted'], df2['Sequence Similarity'], c=colors2, label='Embedding Masking Model', marker='o', edgecolor='black')
-plt.scatter(df3['Percentage Deleted'], df3['Sequence Similarity'], label='Random Masking Model', marker='x', edgecolor='black')
-plt.scatter(df2['Percentage Deleted'], df2['Sequence Similarity'], c=colors2, label='Embedding Masking Model', marker='o', edgecolor='black')
-
-plt.plot(x_vals2, y_vals2, color='blue', linestyle='--', label='Fit: Embedding Masking')
-plt.plot(x_vals3, y_vals3, color='orange', linestyle='--', label='Fit: Random Masking')
-
-plt.xlabel('Percentage Deleted')
-plt.ylabel('Sequence Similarity')
-plt.title('Sequence Similarity vs. Percentage Deleted (Sum of Squares Distance)')
-plt.legend()
-plt.grid(True)
-plt.show()
-
+if __name__=='__main__':
+    main()
