@@ -7,7 +7,7 @@
 This repository contains the code associated with the research paper [Mutagenic: An Embedding-Based Approach to Protein Masking for Functional Redesign](https://openreview.net/pdf?id=0wy0QiPkKU). 
 
 In MUTAGENIC, we investigate the following question: How can we efficiently identify residues to
-edit in the engineering of proteins with specific target functions? More formally, let $F = ${$f_1, f_2, \dots, f_n$} denote a set of possible protein functions. Given a protein sequence $s = s_1s_2\dots s_N$ composed of amino acids \{$s_i$\}$_{i=1}^N$, a function $f \in F$ and a target function $f^\prime \in F$, our goal is to return a new protein sequence $s^\prime$ with functionality $f^\prime$.
+edit in the engineering of proteins with specific target functions? More formally, let $F$ denote a set of possible protein functions. Given a protein sequence $s = s_1s_2\dots s_N$ composed of amino acids $s_i$, a function $f \in F$ and a target function $f^\prime \in F$, our goal is to return a new protein sequence $s^\prime$ with functionality $f^\prime$.
 
 
 
