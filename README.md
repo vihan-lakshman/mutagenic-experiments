@@ -6,8 +6,12 @@
 
 This repository contains the code associated with the research paper [Mutagenic: An Embedding-Based Approach to Protein Masking for Functional Redesign](https://openreview.net/pdf?id=0wy0QiPkKU). 
 
+<!-- In MUTAGENIC, we investigate the following question: How can we efficiently identify residues to
+edit in the engineering of proteins with specific target functions? More formally, let $F = \{f_1, f_2, \dots, f_n\}$ denote a set of possible protein functions. Given a protein sequence $s = s_1s_2\dots s_N$ composed of amino acids $\{s_i\}_{i=1}^N$, a function $f \in F$ and a target function $f^\prime \in F$, our goal is to return a new protein sequence $s^\prime$ with functionality $f^\prime$. -->
+
 In MUTAGENIC, we investigate the following question: How can we efficiently identify residues to
-edit in the engineering of proteins with specific target functions? More formally, let $F = \{f_1, f_2, \dots, f_n\}$ denote a set of possible protein functions. Given a protein sequence $s = s_1s_2\dots s_N$ composed of amino acids $\{s_i\}_{i=1}^N$, a function $f \in F$ and a target function $f^\prime \in F$, our goal is to return a new protein sequence $s^\prime$ with functionality $f^\prime$.
+edit in the engineering of proteins with specific target functions? More formally, let \( F = \{f_1, f_2, \dots, f_n\} \) denote a set of possible protein functions. Given a protein sequence \( s = s_1s_2\dots s_N \) composed of amino acids \( \{s_i\}_{i=1}^N \), a function \( f \in F \) and a target function \( f^\prime \in F \), our goal is to return a new protein sequence \( s^\prime \) with functionality \( f^\prime \).
+
 
 We propose to tackle this problem by leveraging the breakthrough capabilities of protein foundation models, specifically the recently released [ESM-3](https://github.com/evolutionaryscale/esm) model. Inspired by interpretability approaches in the natural language processing literature, we leverage the representational
 learning capabilities of ESM-3 to create a novel pipeline that involves (1) masking the resides of the input protein and then (2) using ESM-3 to fill in these masks to achieve the target functionality. In particular, we propose to identify these masking sites via embedding-based similarity scores from the ESM-3 model. Please see our associated tiny paper for more details.  
