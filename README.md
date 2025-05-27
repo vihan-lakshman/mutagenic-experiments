@@ -26,7 +26,7 @@ We ran all of our scripts on a machine equipped with a single Nvidia A100 GPU. D
 To reproduce our experimental results, please first clone this repository on your machine
 
 ```
-https://github.com/vihan-lakshman/mutagenic-experiments.git
+git clone https://github.com/vihan-lakshman/mutagenic-experiments.git
 ```
 
 Next, we __strongly__ recommend using a python virtual environment to manage all software dependencies. For example, you can create a virtual environment called `venv` as follows:
