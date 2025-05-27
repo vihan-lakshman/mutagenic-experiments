@@ -16,8 +16,9 @@ from huggingface_hub import login
 
 from utils import get_keywords_from_interpro
 
+blosum_matrix = bl.BLOSUM(80)
+
 def mask_sequence(model, df, df2, embeddings_dict, selected_proteins=None):
-    matrix = bl.BLOSUM(80)
     allnuminterpro = []
     allpercentmasks = df['percent_deleted'].tolist()
     allpercentidentities = []
@@ -67,7 +68,7 @@ def mask_sequence(model, df, df2, embeddings_dict, selected_proteins=None):
         else:
             blosum_score = 0
             for gen_residue, target_residue in zip(generated_sequence, row['sequence']):
-                blosum_val =  matrix[gen_residue][target_residue]
+                blosum_val =  blosum_matrix[gen_residue][target_residue]
                 blosum_score += blosum_val
             blosum_score = blosum_score / len(generated_sequence)
             sequence_similarity.append(blosum_score)
@@ -77,7 +78,6 @@ def mask_sequence(model, df, df2, embeddings_dict, selected_proteins=None):
 
 
 def run_masking_pipeline(model, df, df2, df3, embeddings_dict):
-    matrix = bl.BLOSUM(80)
     generated_sequence_list, sequence_similarity = mask_sequence(model, df, df2, embeddings_dict)
     df2['Generated Sequences'] = generated_sequence_list
     df2['Sequence Similarity'] = sequence_similarity
@@ -89,7 +89,7 @@ def run_masking_pipeline(model, df, df2, df3, embeddings_dict):
     return df2, df3
 
 
-def plot_results(df2, df3):
+def plot_correct_versus_deleted(df2, df3):
     # Fit regression lines
     slope2, intercept2 = np.polyfit(df2['Percentage Deleted'], df2['Percent Correct'], 1)
     slope3, intercept3 = np.polyfit(df3['Percentage Deleted'], df3['Percent Correct'], 1)
@@ -116,6 +116,8 @@ def plot_results(df2, df3):
     plt.grid(True)
     plt.savefig("correct_v_deleted.png")
 
+
+def plot_correct_versus_similarity(df2, df3):
     # Assuming df2 and df3 are pandas DataFrames with columns 'Percentage Deleted' and 'Sequence Similarity'
     df2 = df2.dropna(subset=['Percentage Deleted', 'Sequence Similarity'])
     df3 = df3.dropna(subset=['Percentage Deleted', 'Sequence Similarity'])
@@ -151,57 +153,6 @@ def plot_results(df2, df3):
     plt.savefig("similarity_v_deleted.png")
 
 
-    # Assuming df2 and df3 are pandas DataFrames with necessary columns
-    df2 = df2.dropna(subset=['Percentage Deleted', 'Sequence Similarity', 'Number of Interpro Terms'])
-    df3 = df3.dropna(subset=['Percentage Deleted', 'Sequence Similarity', 'Number of Interpro Terms'])
-
-    # Drop rows with -infinity values
-    df2 = df2[(df2['Percentage Deleted'] != -np.inf) & (df2['Sequence Similarity'] != -np.inf)]
-    df3 = df3[(df3['Percentage Deleted'] != -np.inf) & (df3['Sequence Similarity'] != -np.inf)]
-
-    # Define color mapping function
-    def map_color(value):
-        if value < 2:
-            return 'red'
-        elif 2 <= value <= 4:
-            return 'yellow'
-        elif 4 < value <= 6:
-            return 'green'
-        else:
-            return 'blue'
-
-    # Map colors for df2 and df3
-    colors2 = df2['Number of Interpro Terms'].apply(map_color)
-    colors3 = df3['Number of Interpro Terms'].apply(map_color)
-
-    # Fit regression lines for Sequence Similarity
-    slope2, intercept2 = np.polyfit(df2['Percentage Deleted'], df2['Sequence Similarity'], 1)
-    slope3, intercept3 = np.polyfit(df3['Percentage Deleted'], df3['Sequence Similarity'], 1)
-
-    # Generate x values for regression lines
-    x_vals2 = np.linspace(df2['Percentage Deleted'].min(), df2['Percentage Deleted'].max(), 100)
-    y_vals2 = slope2 * x_vals2 + intercept2
-
-    x_vals3 = np.linspace(df3['Percentage Deleted'].min(), df3['Percentage Deleted'].max(), 100)
-    y_vals3 = slope3 * x_vals3 + intercept3
-
-    # Plot scatter and regression lines
-    plt.figure(figsize=(10, 6))
-    #plt.scatter(df2['Percentage Deleted'], df2['Sequence Similarity'], c=colors2, label='Embedding Masking Model', marker='o', edgecolor='black')
-    plt.scatter(df3['Percentage Deleted'], df3['Sequence Similarity'], label='Random Masking Model', marker='x', edgecolor='black')
-    plt.scatter(df2['Percentage Deleted'], df2['Sequence Similarity'], c=colors2, label='Embedding Masking Model', marker='o', edgecolor='black')
-
-    plt.plot(x_vals2, y_vals2, color='blue', linestyle='--', label='Fit: Embedding Masking')
-    plt.plot(x_vals3, y_vals3, color='orange', linestyle='--', label='Fit: Random Masking')
-
-    plt.xlabel('Percentage Deleted')
-    plt.ylabel('Sequence Similarity')
-    plt.title('Sequence Similarity vs. Percentage Deleted (Sum of Squares Distance)')
-    plt.legend()
-    plt.grid(True)
-    plt.show()
-
-
 def main():
     df = pd.read_csv('data/with_seq_similarity_and_mutant_seq_input_df_sumSquare.csv')
     df2 = pd.read_csv('data/with_seq_similarity_embedding_output_full_sumSquare.csv')
@@ -212,7 +163,9 @@ def main():
     embeddings_dict = dict(embeddings_dict.item())
     
     df2, df3 = run_masking_pipeline(model, df, df2, df3, embeddings_dict)
-    plot_results(df2, df3)
+
+    plot_correct_versus_deleted(df2, df3)
+    plot_correct_versus_similarity(df2, df3)
 
 
 if __name__=='__main__':
